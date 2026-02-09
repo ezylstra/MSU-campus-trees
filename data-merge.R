@@ -21,7 +21,7 @@ for (yy in 2018:2019) {
   assign(paste0("df", str_sub(yy, 3, 4)), read.csv(file))
 }
 
-# Column names/types iyears match, so we can combine them
+# Column names/types years match, so we can combine them
 df_early <- rbind(df18, df19)
 
 # Only retain columns we need for analyses and rename 
@@ -42,7 +42,7 @@ df_early <- df_early %>%
   select(-datetime)
 
 # Look at group numbers
-count(df_early, group_num) # numeric group IDs 1:51, except 2 entries with neg values
+count(df_early, group_num) # numeric group IDs 1:51; 2 entries with neg values
 filter(df_early, group_num < 0) 
 
 # Delete entries with negative group numbers and change to character, width 2
@@ -61,7 +61,7 @@ df_early <- df_early %>%
   mutate(group = paste0(section, "_", group_num)) %>%
   mutate(student = paste0(group, "_", student_id))
 
-# Look number of students and observations per group
+# Look at number of students and observations per section/group
 df_early %>% 
   group_by(section, group) %>%
   summarize(n_students = n_distinct(student),
@@ -101,7 +101,7 @@ df_early <- df_early %>%
  
 # 2021-2025 data --------------------------------------------------------------#
 
-# Load csvs with 2021-2025 (separate csv for each week)
+# Load csvs with 2021-2025 (folder for each year; separate csvs for each week)
 for (yy in 2021:2025) {
   # Identify folder
   folder <- paste0("data/original/anonymized-", yy)
@@ -126,7 +126,7 @@ df2123 <- rbind(df21, df22, df23)
 df2123 <- df2123 %>%
   select(-c(Start_time, Completion_time))
 
-# Right now accession numbers (ie, Tree IDs) appear in multiple columns.
+# Right now, accession numbers (ie, tree IDs) appear in multiple columns.
 # Will combine them into one column (including checks to make sure that there
 # was always an accession number in the correct column based on tree species)
 df2123 <- df2123 %>%
@@ -153,9 +153,7 @@ df2425 <- rbind(df24, df25)
 df2425 <- df2425 %>%
   select(-c(Last_modified_time, Start_time, Completion_time))
 
-# Right now accession numbers (ie, Tree IDs) appear in multiple columns.
-# Will combine them into one column (including checks to make sure that there
-# was always an accession number in the correct column based on tree species)
+# Combine accession numbers into one column (including species checks)
 df2425 <- df2425 %>%
   pivot_longer(cols = contains("Accession"),
                names_to = "species_check",
