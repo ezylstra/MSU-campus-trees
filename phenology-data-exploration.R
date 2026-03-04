@@ -3,6 +3,7 @@
 library(dplyr)
 library(lubridate)
 library(stringr)
+library(tidyr)
 library(ggplot2)
 
 # Load data -------------------------------------------------------------------#
@@ -159,8 +160,7 @@ treeyr %>%
             n_students_mean = round(mean(n_students), 1),
             n_students_median = median(n_students),
             n_dates_mean = round(mean(n_dates), 1),
-            n_dates_median = median(n_dates),
-            .groups = "drop") %>%
+            n_dates_median = median(n_dates)) %>%
   data.frame()
 
 # Did the number of students or dates per tree vary among years?
@@ -176,8 +176,10 @@ treeyr %>%
   data.frame()
 
 # Did students ever make >1 observation of the same tree on the same day? -----#
+# Note that we already removed duplicates (ie, same color, fall values)
 
-repeatobs <- df %>%
+# Summarize information for each student, tree, day
+obs <- df %>%
   group_by(student, tree, common_name, year, date) %>%
   summarize(n_observations = n(),
             color_min = min(color),
@@ -185,13 +187,41 @@ repeatobs <- df %>%
             fall_min = min(fall),
             fall_max = max(fall),
             .groups = "drop") %>%
-  data.frame() %>%
-  filter(n_observations > 1)
+  data.frame() 
+# How often/what proportion of the time did students submit > 1 observation?
+count(obs, n_observations)
+n_repeats <- sum(obs$n_observations > 1) # 1017 times
+n_repeats/nrow(obs) # 1.8%
+
+# Isolate instances when students submitted multiple observations of same tree
+# on same day
+repeatobs <- obs %>%
+  filter(n_observations > 1) %>%
+  mutate(color_diff = color_max - color_min,
+         fall_diff = fall_max - fall_min)
 
 head(repeatobs)
-# Might want to investigate these a little more. Color/fall values often very
+count(repeatobs, color_diff > 0, fall_diff > 0) 
+# Most of the time, both color and fall values are different
+
+# When color/fall values are different, how different are they?
+repeatobs %>%
+  pivot_longer(cols = color_diff:fall_diff,
+               names_to = "variable",
+               values_to = "diff") %>%
+  mutate(var = ifelse(variable == "color_diff", 
+                      "Difference in color estimates",
+                      "Difference in fall estimates")) %>%
+  filter(diff > 0) %>%
+  ggplot() +
+  geom_histogram(aes(x = diff), binwidth = 2) +
+  facet_wrap(~var, ncol = 1) +
+  labs(x = "Difference", y = "Count")
+
+# Might want to investigate these a little more. Color/fall values can be very
 # different, suggesting some kind of data entry issue. For now, we'll ignore 
-# them.
+# them, but it might be better to delete observations when things are in
+# question.
 
 # Summarizing observer effort by day ------------------------------------------#
 
@@ -217,16 +247,16 @@ sum(treeday$mult_students)/nrow(treeday)
 # Did the frequency of multiple observer days vary among species?
 treeday %>%
   group_by(common_name) %>%
-  summarize(prop_mult = round(sum(mult_students)/n(), 2)) %>%
+  summarize(prop_mult_obs = round(sum(mult_students)/n(), 2)) %>%
   data.frame()
   # Ranges from 22-35%
 
 # Did the frequency of multiple observer days vary among years?
 treeday %>%
   group_by(year) %>%
-  summarize(prop_mult = round(sum(mult_students)/n(), 2)) %>%
+  summarize(prop_mult_obs = round(sum(mult_students)/n(), 2)) %>%
   data.frame()
-  # Fewer in 2021
+  # Lower rate in 2021
 
 # Append information about the number of observations and number of students
 # that made observations each tree-day to the main dataframe
