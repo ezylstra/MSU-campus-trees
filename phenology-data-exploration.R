@@ -6,14 +6,21 @@ library(stringr)
 library(tidyr)
 library(ggplot2)
 
+# If there are errors, make sure package is installed, eg:
+# install.packages("tidyr")
+
 # Load data -------------------------------------------------------------------#
+# The code below will read the data from the GitHub website. What's commented 
+# out is code to read data from a local file (in a data folder)
 
 # Phenology data
-df <- read.csv("data/msu-phenology-data.csv")
+df <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/msu-phenology-data.csv")
+# df <- read.csv("data/msu-phenology-data.csv")
 
 # List of tree species (*this will eventually be replaced with a list of
 # individual trees and associated species info*)
-tree_spp <- read.csv("data/tree-species.csv")
+tree_spp <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/tree-species.csv")
+# tree_spp <- read.csv("data/tree-species.csv")
 
 # Fixing a few section numbers ------------------------------------------------#
 
@@ -114,19 +121,32 @@ ggplot(df) +
 
 # What do yearly patterns look like for one species?
 
-# Fall, in red maples
-ggplot(filter(df, spp == "acru")) +
+# Fall, in red maples 
+# (Can change species or replace "fall" with "color" to look at other data)
+ggplot(filter(df, common_name == "red maple")) +
   geom_point(aes(x = doy, y = fall)) +
   facet_wrap(~year) +
   labs(x = "Day of year", y = "Fall estimate")
 
 # What do the data for individual trees look like for a given species, year? 
 
-# Fall values in 2023, red maple trees
-ggplot(filter(df, spp == "acru" & year == 2023),
+# Fall values in 2024, red maple trees
+# (Can change species, year, or fall/color)
+ggplot(filter(df, common_name == "red maple" & year == 2024),
        aes(x = doy, y = fall)) +
   geom_point() +
   facet_wrap(~tree) +
+  labs(x = "Day of year", y = "Fall estimate")
+
+# What do the data from each student look like for one tree?
+
+# Fall values in 2024, red maple tree 20100046-07, by student
+# (Can change species, year, tree, or fall/color)
+ggplot(filter(df, common_name == "red maple" & year == 2024 & 
+                tree == "20100046-07"),
+       aes(x = doy, y = fall)) +
+  geom_point() +
+  facet_wrap(~student) +
   labs(x = "Day of year", y = "Fall estimate")
 
 # Summarizing observer effort by year -----------------------------------------#
@@ -138,12 +158,16 @@ treeyr <- df %>%
             n_dates = n_distinct(date),
             n_students = n_distinct(student),
             .groups = "drop") %>%
-  data.frame()
+  data.frame() %>%
+  mutate(obs_per_student = n_observations / n_students)
 head(treeyr)
 
 # How many students observed each tree in a given year?
 summary(treeyr$n_students)
 count(treeyr, n_students)
+
+# How many observations did each student submit for a tree in a given year?
+summary(treeyr$obs_per_student)
 
 # How many days was each tree observed in a given year?
 summary(treeyr$n_dates)
@@ -151,6 +175,9 @@ ggplot(treeyr, aes(x = n_dates)) +
   geom_histogram(binwidth = 1) +
   labs(x = "Number of days a tree was observed in a year",
        y = "Number of tree-years")
+# Looking into instances where a tree was observed < 5 times during the semester
+treeyr %>%
+  filter(n_dates < 5)
   
 # Did the number of students or dates per tree vary among species?
 treeyr %>%
@@ -176,7 +203,9 @@ treeyr %>%
   data.frame()
 
 # Did students ever make >1 observation of the same tree on the same day? -----#
-# Note that we already removed duplicates (ie, same color, fall values)
+
+# Note that we already removed duplicates, so these are instances where the 
+# student reported different values for leaf color and/or fall
 
 # Summarize information for each student, tree, day
 obs <- df %>%
@@ -188,6 +217,7 @@ obs <- df %>%
             fall_max = max(fall),
             .groups = "drop") %>%
   data.frame() 
+
 # How often/what proportion of the time did students submit > 1 observation?
 count(obs, n_observations)
 n_repeats <- sum(obs$n_observations > 1) # 1017 times
@@ -199,13 +229,16 @@ repeatobs <- obs %>%
   filter(n_observations > 1) %>%
   mutate(color_diff = color_max - color_min,
          fall_diff = fall_max - fall_min)
-
 head(repeatobs)
-count(repeatobs, color_diff > 0, fall_diff > 0) 
-# Most of the time, both color and fall values are different
 
+# How many times did a student report a different color value, a different fall
+# value, or different values for both?
+count(repeatobs, color_diff > 0, fall_diff > 0) 
+  # Most of the time, both color and fall values are different
+
+# Did this occur more/less often in some years?
 count(repeatobs, year)
-# Many more instances of repeat observations in 2018-2019 than 2021-2025
+  # Many more instances of repeat observations in 2018-2019 than 2021-2025
 
 # When color/fall values are different, how different are they?
 repeatobs %>%
@@ -279,26 +312,22 @@ sameday <- df %>%
             color_min = min(color),
             color_mean = mean(color),
             color_max = max(color),
-            color_sd = sd(color),
             fall_min = min(fall),
             fall_mean = mean(fall),
             fall_max = max(fall),
-            fall_sd = sd(fall),
             .groups = "drop") %>%
   data.frame() %>%
-  mutate(color_range = color_max - color_min, .after = "color_sd") %>%
+  mutate(color_range = color_max - color_min, .after = "color_max") %>%
   mutate(fall_range = fall_max - fall_min)
-  # Note: calculating SDs, but it's not a great measure given how few
-  # observations are made on the same day (median = 2, mean = 2.3)
+  # Note: Not calculating SDs right now given how few observations are made on
+  # the same day (median = 2, mean = 2.3)
 
 # Does consistency vary by species?
 sameday %>%
   group_by(common_name) %>%
   summarize(n_treedays = n(),
             n_observations_mean = round(mean(n_observations), 2),
-            color_sd_mean = round(mean(color_sd), 2),
             color_range_mean = round(mean(color_range), 2),
-            fall_sd_mean = round(mean(fall_sd), 2),
             fall_range_mean = round(mean(fall_range), 2)) %>%
   data.frame()
 
@@ -307,9 +336,7 @@ sameday %>%
   group_by(year) %>%
   summarize(n_treedays = n(),
             n_observations_mean = round(mean(n_observations), 2),
-            color_sd_mean = round(mean(color_sd), 2),
             color_range_mean = round(mean(color_range), 2),
-            fall_sd_mean = round(mean(fall_sd), 2),
             fall_range_mean = round(mean(fall_range), 2)) %>%
   data.frame()
 
