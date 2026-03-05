@@ -204,6 +204,9 @@ head(repeatobs)
 count(repeatobs, color_diff > 0, fall_diff > 0) 
 # Most of the time, both color and fall values are different
 
+count(repeatobs, year)
+# Many more instances of repeat observations in 2018-2019 than 2021-2025
+
 # When color/fall values are different, how different are they?
 repeatobs %>%
   pivot_longer(cols = color_diff:fall_diff,
