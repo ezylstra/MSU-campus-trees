@@ -1,5 +1,5 @@
 # Merging MSU Campus Trees data, 2018-2025
-# 6 Feb 2026
+# 11 Mar 2026
 # E Zylstra
 
 library(dplyr)
@@ -36,9 +36,12 @@ df_early <- df_early %>%
          datetime = X_submission_time) 
 
 # Extract date from datetime and create year column
+# Retaining submission time (for additional info on replicate observations)
 df_early <- df_early %>%
   mutate(date = ymd(str_sub(datetime, 1, 10))) %>%
   mutate(year = year(date)) %>%
+  mutate(submission = str_replace_all(datetime, "T", " ")) %>%
+  mutate(submission = parse_date_time(submission, orders = "YmdhMS")) %>%
   select(-datetime)
 
 # Look at group numbers
@@ -84,7 +87,7 @@ df_early %>%
 # Clean up and remove columns to match up better with 2021-2025 data
 df_early <- df_early %>%
   select(year, date, section, group, student, 
-         species, individual, color, fall) %>%
+         species, individual, color, fall, submission) %>%
   mutate(species = case_when(
     species == "ACRU" ~ "Acer rubrum",
     species == "ACSA" ~ "Acer saccharum",
@@ -121,9 +124,12 @@ for (yy in 2021:2025) {
 # combine them
 df2123 <- rbind(df21, df22, df23)
 
-# Remove columns used to identify when students observations were uploaded
-# to database (Start_time, Completion_time)
+# Start_time and Completion_time columns can be used to identify when students'
+# observations were uploaded to the database. They almost always very similar.
+# Will retain information from the Completion_time column to note when a
+# student submitted data.
 df2123 <- df2123 %>%
+  mutate(submission = parse_date_time(Completion_time, orders = "YmdhMS")) %>%
   select(-c(Start_time, Completion_time))
 
 # Right now, accession numbers (ie, tree IDs) appear in multiple columns.
@@ -148,9 +154,10 @@ df2123 <- df2123 %>%
 # them
 df2425 <- rbind(df24, df25)
 
-# Remove columns used to identify when students observations were uploaded
-# to database (Last_modified_time, Start_time, Completion_time)
+# Create submission column and then remove original columns used to identify  
+# when students' observations were uploaded to database
 df2425 <- df2425 %>%
+  mutate(submission = parse_date_time(Completion_time, orders = "YmdhMS")) %>%
   select(-c(Last_modified_time, Start_time, Completion_time))
 
 # Combine accession numbers into one column (including species checks)
@@ -179,7 +186,8 @@ df2125 <- rbind(df2123, df2425) %>%
   mutate(Photo_date = ymd(Photo_date)) %>%
   mutate(year = year(Photo_date)) %>%
   select(year, Photo_date, SectionID, StudentID, 
-         Tree_species, tree, Percent_color, Percent_fallen, Comments) %>%
+         Tree_species, tree, Percent_color, Percent_fallen, submission,
+         Comments) %>%
   rename(section = SectionID,
          date = Photo_date,
          student = StudentID,
@@ -203,6 +211,36 @@ df2125 <- df2125 %>%
     grepl("Fagus", species) ~ "Fagus grandifolia",
     .default = species
   ))
+
+# Fixing a few section numbers
+# Realized after the fact that some sections in 2024 were listed with slightly 
+# different names in the original datafiles and thus were assigned different 
+# section ID numbers. Will fix that here:
+
+# Sections 2024-01, 2024-06, and 2024-11 are the same
+# Sections 2024-03, 2024-07, and 2024-09 are the same
+# Sections 2024-04, 2024-10, and 2024-12 are the same
+# Sections 2024-05 and 2024-08 are the same
+
+df2125 <- df2125 %>%
+  mutate(section = case_when(
+    section == "2024-06" ~ "2024-01",
+    section == "2024-11" ~ "2024-01",
+    section == "2024-07" ~ "2024-03",
+    section == "2024-09" ~ "2024-03",
+    section == "2024-10" ~ "2024-04",
+    section == "2024-12" ~ "2024-04",
+    section == "2024-08" ~ "2024-05",
+    .default = section
+  ))
+
+# Check that all section numbers match up with year
+df2125 %>%
+  filter(year != str_sub(section, 1, 4))
+# One instance where photo date is listed in 2022, but section and submission
+# date listed as 2022. Will delete this observation
+df2125 <- df2125 %>%
+  filter(year == str_sub(section, 1, 4))
 
 # Combine data from all years -------------------------------------------------#
 

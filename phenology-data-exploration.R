@@ -22,29 +22,6 @@ df <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs
 tree_spp <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/tree-species.csv")
 # tree_spp <- read.csv("data/tree-species.csv")
 
-# Fixing a few section numbers ------------------------------------------------#
-
-# Realized after the fact that some sections in 2024 were listed with slightly 
-# different names in the original datafiles and thus were assigned different 
-# section ID numbers. Will fix that here:
-
-# Sections 2024-01, 2024-06, and 2024-11 are the same
-# Sections 2024-03, 2024-07, and 2024-09 are the same
-# Sections 2024-04, 2024-10, and 2024-12 are the same
-# Sections 2024-05 and 2024-08 are the same
-
-df <- df %>%
-  mutate(section = case_when(
-    section == "2024-06" ~ "2024-01",
-    section == "2024-11" ~ "2024-01",
-    section == "2024-07" ~ "2024-03",
-    section == "2024-09" ~ "2024-03",
-    section == "2024-10" ~ "2024-04",
-    section == "2024-12" ~ "2024-04",
-    section == "2024-08" ~ "2024-05",
-    .default = section
-  ))
-
 # A little data formatting, clean up ------------------------------------------#
 
 # Format date, create day-of-year variable (doy), and remove observations
@@ -149,6 +126,20 @@ ggplot(filter(df, common_name == "red maple" & year == 2024 &
   facet_wrap(~student) +
   labs(x = "Day of year", y = "Fall estimate")
 
+# Looking at data for individual students 
+df %>% 
+  filter(common_name == "red maple" & year == 2024 & tree == "20100046-07" & 
+           student == "12117787") %>% 
+  arrange(date) 
+  # Submitted 2 observations on 14 Nov. One with 0 values for color & fall
+
+df %>% 
+  filter(common_name == "red maple" & year == 2024 & tree == "20100046-07" & 
+           student == "46820915") %>% 
+  arrange(date) 
+  # Submitted observation on 16 Nov with 0 values, and submitted observations
+  # on 17 Nov with 100 values.
+
 # Summarizing observer effort by year -----------------------------------------#
 
 # Summarize effort for each tree each year
@@ -159,6 +150,7 @@ treeyr <- df %>%
             n_students = n_distinct(student),
             .groups = "drop") %>%
   data.frame() %>%
+  # Calculate mean number of observations per student
   mutate(obs_per_student = n_observations / n_students)
 head(treeyr)
 
@@ -175,7 +167,7 @@ ggplot(treeyr, aes(x = n_dates)) +
   geom_histogram(binwidth = 1) +
   labs(x = "Number of days a tree was observed in a year",
        y = "Number of tree-years")
-# Looking into instances where a tree was observed < 5 times during the semester
+# Looking into instances where a tree was observed < 5 days during the semester
 treeyr %>%
   filter(n_dates < 5)
   
@@ -254,10 +246,20 @@ repeatobs %>%
   facet_wrap(~var, ncol = 1) +
   labs(x = "Difference", y = "Count")
 
+# Did the student report small color differences when they reported small 
+# fall differences (or large differences in both)? Create jittered scatter plot.
+ggplot(repeatobs) +
+  geom_jitter(aes(x = color_diff, y = fall_diff)) +
+  labs(x = "Difference in color values", y = "Difference in fall values")
+
+cor(repeatobs$color_diff, repeatobs$fall_diff) 
+# Correlation between color/fall differences = 0.29
+
 # Might want to investigate these a little more. Color/fall values can be very
-# different, suggesting some kind of data entry issue. For now, we'll ignore 
-# them, but it might be better to delete observations when things are in
-# question.
+# different, suggesting some kind of data entry issue (particularly given there
+# are more repeat observations in early years when there was a different data-
+# entry platform). For now, we'll ignore these repeats, but it might be better
+# to delete observations when things are in question.
 
 # Summarizing observer effort by day ------------------------------------------#
 
