@@ -24,10 +24,12 @@ tree_spp <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-tree
 
 # A little data formatting, clean up ------------------------------------------#
 
-# Format date, create day-of-year variable (doy), and remove observations
-# with negative values for fall or color (there are no missing values)
+# Format date and submission time variables, create day-of-year variable (doy), 
+# and remove observations with negative values for fall or color (there are
+# no missing color/fall values) 
 df <- df %>%
   mutate(date = ymd(date)) %>%
+  mutate(submission = parse_date_time(submission, orders = "YmdhMS")) %>%  
   mutate(doy = yday(date)) %>%
   filter(fall >= 0 & color >= 0)
 
@@ -55,7 +57,7 @@ df <- df %>%
 # Remove comments column
 df <- select(df, -comments)
 
-# Remove any duplicate observations (same student, tree, date and same
+# Remove any duplicate observations (same student, tree, date, and same
 # values for color and fall)
 df <- df %>%
   distinct(date, student, tree, color, fall, .keep_all = TRUE)
@@ -126,19 +128,21 @@ ggplot(filter(df, common_name == "red maple" & year == 2024 &
   facet_wrap(~student) +
   labs(x = "Day of year", y = "Fall estimate")
 
-# Looking at data for individual students 
+# Can also look at data submitted for a single tree by one student 
 df %>% 
   filter(common_name == "red maple" & year == 2024 & tree == "20100046-07" & 
            student == "12117787") %>% 
-  arrange(date) 
-  # Submitted 2 observations on 14 Nov. One with 0 values for color & fall
+  arrange(date, submission) 
+  # Two observations for 14 Nov, both submitted on 17 Nov within 7 minutes of 
+  # each other. First observation with 0 values for color & fall, next with 
+  # 100 values for each.
 
 df %>% 
   filter(common_name == "red maple" & year == 2024 & tree == "20100046-07" & 
            student == "46820915") %>% 
-  arrange(date) 
-  # Submitted observation on 16 Nov with 0 values, and submitted observations
-  # on 17 Nov with 100 values.
+  arrange(date, submission) 
+  # One observation on 16 Nov with 0 values and another observation on 17 Nov
+  # 17 Nov with 100 values.
 
 # Summarizing observer effort by year -----------------------------------------#
 
@@ -167,7 +171,7 @@ ggplot(treeyr, aes(x = n_dates)) +
   geom_histogram(binwidth = 1) +
   labs(x = "Number of days a tree was observed in a year",
        y = "Number of tree-years")
-# Looking into instances where a tree was observed < 5 days during the semester
+# Looking into instances where a tree was observed on <5 days during the semester
 treeyr %>%
   filter(n_dates < 5)
   
@@ -199,7 +203,11 @@ treeyr %>%
 # Note that we already removed duplicates, so these are instances where the 
 # student reported different values for leaf color and/or fall
 
-# Summarize information for each student, tree, day
+# Summarize information for each student, tree, day: 
+# Number of observations, min/max color value, min/max fall value, 
+# minutes between first and last submission. (Most of the time, students will
+# submit a single observation for a tree on a particular date, so color_min = 
+# color_max, fall_min = fall_max, and submission_timediff = 0)
 obs <- df %>%
   group_by(student, tree, common_name, year, date) %>%
   summarize(n_observations = n(),
@@ -207,6 +215,8 @@ obs <- df %>%
             color_max = max(color),
             fall_min = min(fall),
             fall_max = max(fall),
+            submission_timediff = as.numeric(max(submission) - min(submission),
+                                             units = "mins"),
             .groups = "drop") %>%
   data.frame() 
 
@@ -247,7 +257,7 @@ repeatobs %>%
   labs(x = "Difference", y = "Count")
 
 # Did the student report small color differences when they reported small 
-# fall differences (or large differences in both)? Create jittered scatter plot.
+# fall differences (or large differences in both)?
 ggplot(repeatobs) +
   geom_jitter(aes(x = color_diff, y = fall_diff)) +
   labs(x = "Difference in color values", y = "Difference in fall values")
@@ -255,11 +265,22 @@ ggplot(repeatobs) +
 cor(repeatobs$color_diff, repeatobs$fall_diff) 
 # Correlation between color/fall differences = 0.29
 
-# Might want to investigate these a little more. Color/fall values can be very
-# different, suggesting some kind of data entry issue (particularly given there
-# are more repeat observations in early years when there was a different data-
-# entry platform). For now, we'll ignore these repeats, but it might be better
-# to delete observations when things are in question.
+# How much time elapsed between submissions for the same observation day?
+ggplot(repeatobs) +
+  geom_histogram(aes(submission_timediff)) +
+  labs(x = "Time difference (minutes)", y = "Count")
+
+# Look at quantiles:
+quantile(repeatobs$submission_timediff, probs = seq(0, 1, by = 0.10)) %>%
+  round(2)
+# 50% of submission time differences were < 3 minutes
+# 80% of submission time differences were < 1 hr
+
+# For now we'll ignore these repeat submissions, but will probably want to 
+# create some kind of rule for selecting one observation per day (since they're
+# often submitted close in time and have similar color/fall values). The 
+# alternative is to delete all observations when a student submitted multiple
+# for one tree on one day. 
 
 # Summarizing observer effort by day ------------------------------------------#
 
@@ -343,4 +364,6 @@ sameday %>%
   data.frame()
 
 # Next step: evaluate consistency of observations made in the same 3-day or 
-# 7-day period.
+# 7-day period. 
+# If using weekly periods, is there a natural start day (Mon-Sun or Sun-Sat)?
+
