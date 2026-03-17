@@ -1,5 +1,5 @@
 # Merging MSU Campus Trees data, 2018-2025
-# 11 Mar 2026
+# 17 Mar 2026
 # E Zylstra
 
 library(dplyr)
@@ -125,9 +125,9 @@ for (yy in 2021:2025) {
 df2123 <- rbind(df21, df22, df23)
 
 # Start_time and Completion_time columns can be used to identify when students'
-# observations were uploaded to the database. They almost always very similar.
-# Will retain information from the Completion_time column to note when a
-# student submitted data.
+# observations were uploaded to the database. They're almost always very 
+# similar. Will retain information from the Completion_time column to note when
+# a student submitted data.
 df2123 <- df2123 %>%
   mutate(submission = parse_date_time(Completion_time, orders = "YmdhMS")) %>%
   select(-c(Start_time, Completion_time))
@@ -202,16 +202,6 @@ filter(df2125, !year %in% 2021:2025)
 df2125 <- df2125 %>%
   filter(year %in% 2021:2025)
 
-# Clean up Fagus tree species
-  # Tree #CC0190*01 was later determined to be Fagus sylvatica
-  # All other Fagus spp trees should be Fagus grandifolia
-df2125 <- df2125 %>%
-  mutate(species = case_when(
-    tree == "CC0190*01" ~ "Fagus sylvatica",
-    grepl("Fagus", species) ~ "Fagus grandifolia",
-    .default = species
-  ))
-
 # Fixing a few section numbers
 # Realized after the fact that some sections in 2024 were listed with slightly 
 # different names in the original datafiles and thus were assigned different 
@@ -256,6 +246,47 @@ df <- rbind(df_early, df2125)
 
 # Remove duplicate rows (information in all columns is the same)
 df <- distinct(df, .keep_all = TRUE)
+
+# Check accession numbers and species -----------------------------------------#
+
+# Clean up Fagus tree species
+# Tree #CC0190*01 was later determined to be Fagus sylvatica
+# All other Fagus spp trees should be Fagus grandifolia
+df <- df %>%
+  mutate(species = case_when(
+    tree == "CC0190*01" ~ "Fagus sylvatica",
+    grepl("Fagus", species) ~ "Fagus grandifolia",
+    .default = species
+  ))
+
+# Load tree list
+treelist <- read.csv("data/MSUTreeList.csv")
+
+# Does every tree in treelist appear in phenology dataset?
+setdiff(treelist$accession, unique(df$tree)) # yes
+# Does every tree in phenology dataset appear in treelist?
+setdiff(unique(df$tree), treelist$accession) 
+  # no. Looks like one accession has a dash instead of an asterisk
+
+filter(df, grepl("20100046", tree)) %>%
+  count(tree, species, year)
+# Accession number with asterisk observed in 2022-2023, and with dash observed
+# in 2024-2025. Will swap out dash with asterisk
+df <- df %>%
+  mutate(tree = ifelse(tree == "20100046-07", "20100046*07", tree))
+
+# Last tree number/species check:
+dftrees <- df %>%
+  distinct(tree, species) %>%
+  arrange(tree)
+tltrees <- treelist %>%
+  distinct(accession, scientific_name) %>%
+  rename(tree = accession,
+         species = scientific_name) %>%
+  arrange(tree)
+# Same list of tree accession numbers and assigned species in phenology dataset
+# and treelist?
+all.equal(dftrees, tltrees) # yes
 
 # Write to file (commenting out until needed so the file is not accidentally
 # overwritten)

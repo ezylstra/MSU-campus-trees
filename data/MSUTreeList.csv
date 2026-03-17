@@ -221,7 +221,7 @@ CC4326*01,Quercus alba,White oak,42.730388,-84.480695
 CC4600*01,Quercus alba,White oak,42.732367,-84.479931
 CC4955*01,Quercus alba,White oak,42.726929,-84.482615
 CC4955*02,Quercus alba,White oak,42.726803,-84.482576
-CC4955*03,Quercus alba,Red oak,42.726712,-84.4825588
+CC4955*03,Quercus alba,White oak,42.726712,-84.4825588
 CC6390*01,Quercus alba,White oak,42.731793,-84.47462
 CC6631*01,Quercus alba,White oak,42.727408,-84.474069
 CC6651*01,Quercus alba,White oak,42.727213,-84.477294
@@ -279,3 +279,6 @@ CC6416*01,Ulmus americana,American elm,42.73157,-84.475548
 CC6546*02,Ulmus americana,American elm,42.729193,-84.476621
 CC6859*01,Ulmus americana,American elm,42.725995,-84.481883
 CC6943*01,Ulmus americana,American elm,42.725734,-84.482471
+20100048*06,Acer rubrum,Red maple,,
+20100048*10,Acer rubrum,Red maple,,
+CC4955*04,Quercus alba,White oak,,
