@@ -1,6 +1,9 @@
 # Create basic summaries of MSU Campus Trees phenology data
 
-library(dplyr)
+library(dplyr) 
+  # Should be version 1.2.0 or later. Can check with sessionInfo() or 
+  # packageVersion("dplyr"). If need to update, click Update in the Packages
+  # tab in lower right window in RStudio
 library(lubridate)
 library(stringr)
 library(tidyr)
@@ -17,12 +20,39 @@ library(ggplot2)
 df <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/msu-phenology-data.csv")
 # df <- read.csv("data/msu-phenology-data.csv")
 
-# List of tree species (*this will eventually be replaced with a list of
-# individual trees and associated species info*)
-tree_spp <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/tree-species.csv")
-# tree_spp <- read.csv("data/tree-species.csv")
+# Tree information (species, location)
+trees <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/MSUTreeList.csv")
+# trees <- read.csv("data/MSUTreeList.csv")
 
-# A little data formatting, clean up ------------------------------------------#
+# Format tree data ------------------------------------------------------------#
+
+# Rename columns to match what's in phenology dataset and add a species 4-letter
+# code (spp)
+trees <- trees %>%
+  rename(tree = accession,
+         species = scientific_name) %>%
+  mutate(spp = recode_values(
+    species,
+    "Acer rubrum" ~ "acru",
+    "Acer saccharinum" ~ "acsi",
+    "Acer saccharum" ~ "acsu",
+    "Cercis canadensis" ~ "ceca",
+    "Cornus florida" ~ "cofl",
+    "Fagus grandifolia" ~ "fagr",
+    "Fagus sylvatica" ~ "fasy",
+    "Gymnocladus dioicius" ~ "gydi",
+    "Liriodendron tulipifera" ~ "litu",
+    "Metasequoia glyptostroboides" ~ "megl",
+    "Ostrya virginiana" ~ "osvi",
+    "Pinus strobus" ~ "pist",
+    "Platanus occidentalis" ~ "ploc",
+    "Quercus alba" ~ "qual",
+    "Quercus macrocarpa" ~ "quma",
+    "Quercus rubra" ~ "quru",
+    "Ulmus americana" ~ "ulam"
+  ))
+
+# A little data formatting, clean up of phenology data ------------------------#
 
 # Format date and submission time variables, create day-of-year variable (doy), 
 # and remove observations with negative values for fall or color (there are
@@ -49,9 +79,10 @@ ggplot(df) +
 df <- df %>%
   filter(doy >= 239 & doy <= 345)
 
-# Add species codes, common names (and remove scientific name for now)
+# Add species codes, common names from trees list (and remove scientific name 
+# for now)
 df <- df %>%
-  left_join(tree_spp, by = "species") %>%
+  left_join(select(trees, tree, common_name, spp), by = "tree") %>%
   select(-species)
   
 # Remove comments column
@@ -102,7 +133,7 @@ ggplot(df) +
 
 # Fall, in red maples 
 # (Can change species or replace "fall" with "color" to look at other data)
-ggplot(filter(df, common_name == "red maple")) +
+ggplot(filter(df, common_name == "Red maple")) +
   geom_point(aes(x = doy, y = fall)) +
   facet_wrap(~year) +
   labs(x = "Day of year", y = "Fall estimate")
@@ -111,7 +142,7 @@ ggplot(filter(df, common_name == "red maple")) +
 
 # Fall values in 2024, red maple trees
 # (Can change species, year, or fall/color)
-ggplot(filter(df, common_name == "red maple" & year == 2024),
+ggplot(filter(df, common_name == "Red maple" & year == 2024),
        aes(x = doy, y = fall)) +
   geom_point() +
   facet_wrap(~tree) +
@@ -121,8 +152,8 @@ ggplot(filter(df, common_name == "red maple" & year == 2024),
 
 # Fall values in 2024, red maple tree 20100046-07, by student
 # (Can change species, year, tree, or fall/color)
-ggplot(filter(df, common_name == "red maple" & year == 2024 & 
-                tree == "20100046-07"),
+ggplot(filter(df, common_name == "Red maple" & year == 2024 & 
+                tree == "20100046*07"),
        aes(x = doy, y = fall)) +
   geom_point() +
   facet_wrap(~student) +
@@ -130,7 +161,7 @@ ggplot(filter(df, common_name == "red maple" & year == 2024 &
 
 # Can also look at data submitted for a single tree by one student 
 df %>% 
-  filter(common_name == "red maple" & year == 2024 & tree == "20100046-07" & 
+  filter(common_name == "Red maple" & year == 2024 & tree == "20100046*07" & 
            student == "12117787") %>% 
   arrange(date, submission) 
   # Two observations for 14 Nov, both submitted on 17 Nov within 7 minutes of 
@@ -138,11 +169,11 @@ df %>%
   # 100 values for each.
 
 df %>% 
-  filter(common_name == "red maple" & year == 2024 & tree == "20100046-07" & 
+  filter(common_name == "Red maple" & year == 2024 & tree == "20100046*07" & 
            student == "46820915") %>% 
   arrange(date, submission) 
   # One observation on 16 Nov with 0 values and another observation on 17 Nov
-  # 17 Nov with 100 values.
+  # with 100 values.
 
 # Summarizing observer effort by year -----------------------------------------#
 
@@ -171,7 +202,7 @@ ggplot(treeyr, aes(x = n_dates)) +
   geom_histogram(binwidth = 1) +
   labs(x = "Number of days a tree was observed in a year",
        y = "Number of tree-years")
-# Looking into instances where a tree was observed on <5 days during the semester
+# Looking into instances where a tree was observed on <5 days during semester
 treeyr %>%
   filter(n_dates < 5)
   
@@ -204,10 +235,13 @@ treeyr %>%
 # student reported different values for leaf color and/or fall
 
 # Summarize information for each student, tree, day: 
-# Number of observations, min/max color value, min/max fall value, 
-# minutes between first and last submission. (Most of the time, students will
-# submit a single observation for a tree on a particular date, so color_min = 
-# color_max, fall_min = fall_max, and submission_timediff = 0)
+  # number of observations
+  # min/max color value, 
+  # min/max fall value, 
+  # minutes between first and last submission. 
+# Most of the time, students will submit a single observation for a tree on a 
+# particular date, so color_min = color_max, fall_min = fall_max, and 
+# submission_timediff = 0.
 obs <- df %>%
   group_by(student, tree, common_name, year, date) %>%
   summarize(n_observations = n(),
@@ -263,7 +297,7 @@ ggplot(repeatobs) +
   labs(x = "Difference in color values", y = "Difference in fall values")
 
 cor(repeatobs$color_diff, repeatobs$fall_diff) 
-# Correlation between color/fall differences = 0.29
+  # Correlation between color/fall differences = 0.29
 
 # How much time elapsed between submissions for the same observation day?
 ggplot(repeatobs) +
