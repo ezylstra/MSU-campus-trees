@@ -1,0 +1,14 @@
+name: msu-tree-map
+title: msu-tree-map
+username: ezylstra
+account: ezylstra
+server: viz.datascience.arizona.edu
+hostUrl: https://viz.datascience.arizona.edu/__api__
+appId: 1418
+bundleId: 9338
+url: https://viz.datascience.arizona.edu:443/content/6aadd9a9-96aa-4249-a2de-76d7e1eb8dd0/
+version: 1
+quarto_version: 1.8.25
+quarto_engines: knitr
+asMultiple: FALSE
+asStatic: FALSE

@@ -1,0 +1,85 @@
+---
+title: "MSU Campus Trees - Site Map"
+format: html
+editor: visual
+page-layout: full
+---
+
+## Tree locations
+
+Below is a simple interactive map with locations of trees observed on the MSU campus between 2017 and 2025. Hovering over a point will display the tree species and accession number. Clicking on a point will display that information, plus the years that tree was monitored and the total number of observations submitted.
+
+```{r create-map}
+#| echo: FALSE
+#| output: FALSE
+#| warning: FALSE
+
+library(dplyr)
+library(leaflet)
+library(htmltools)
+
+# Load tree list
+trees <- read.csv("data/MSUTreeList.csv")
+trees <- trees %>%
+  mutate(common_name = factor(common_name))
+
+# Load phenology data, 2017-2025
+dat <- read.csv("data/msu-phenology-data-2017-2025.csv")
+
+# Determine which years each tree was monitored and attach to tree list
+dat <- dat %>%
+  group_by(tree) %>%
+  summarize(minyr = min(year),
+            maxyr = max(year),
+            nyrs = n_distinct(year),
+            nobs = n()) %>%
+  mutate(yrs = paste0(minyr, "-", maxyr)) %>%
+  mutate(obs = paste0(nyrs, " (", nobs, ")")) %>%
+  data.frame() %>%
+  select(tree, yrs, obs)
+trees <- trees %>%
+  left_join(dat, by = c("accession" = "tree"))
+  
+# Map settings
+pal_leaf <- leaflet::colorFactor(palette = "turbo", 
+                                 domain = unique(trees$common_name))
+
+treespp <- sort(unique(trees$common_name))
+cols <- pal_leaf(treespp)
+
+# Create map
+map <- trees %>%
+  leaflet(height = 750) %>%
+  addProviderTiles(providers$OpenStreetMap,
+                   options = providerTileOptions(opacity = 0.6)) %>% 
+  addCircleMarkers(
+    lng = ~longitude,
+    lat = ~latitude,
+    label = ~paste0(common_name, ": ", accession),
+    fillColor = ~pal_leaf(common_name),
+    fillOpacity = 1,
+    color = "black",
+    stroke = TRUE,
+    weight = 2,
+    radius = 5,
+    popup = ~paste0(common_name, "<br>",
+                    "ID: ", accession, "<br>", 
+                    "Years: ", yrs, "<br>",
+                    "No. years (no. obs): ", obs)
+  ) %>%
+  addLegend(
+    position = "bottomleft",
+    pal = pal_leaf,
+    values = ~ common_name,
+    labels = ~common_name,
+    title = "Tree Species"
+  ) %>%
+  addScaleBar(
+    position = "topright"
+  )
+```
+
+```{r display-map}
+#| echo: FALSE
+map
+```
