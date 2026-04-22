@@ -1,5 +1,5 @@
 # Prepping MSU data to incoporate in NN database
-# 18 March 2026
+# 22 April 2026
 
 library(dplyr)
 library(stringr)
@@ -43,8 +43,8 @@ df <- df %>%
   mutate(nn_leaves = ifelse(canopy > 0, 1, 0),
          nn_coloredleaves = ifelse(color > 0, 1, 0))
 # check
-# count(df, fall_percent, nn_leaves)
-# count(df, fall_percent == 100, color_percent, nn_coloredleaves)
+count(df, fall_percent, nn_leaves)
+count(df, fall_percent == 100, color_percent, nn_coloredleaves)
 
 # Add in NN canopy fullness (intensity values for leaf phenophase)
 df <- df %>%
@@ -67,13 +67,17 @@ df$nn_coloredcanopy[df$nn_coloredleaves == 0] <- NA
 # Converting MSU color/fall observations --------------------------------------#
 
 # Load phenology data (2018-2025)
-dat <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/msu-phenology-data.csv")
-# dat <- read.csv("data/msu-phenology-data.csv")
+# dat <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/msu-phenology-data.csv")
+dat <- read.csv("data/msu-phenology-data-2017-2025.csv")
+
+# First delete any observations with negative fall or color values
+dat <- dat %>%
+  filter(color >= 0 & fallen >= 0)
 
 # Convert percents to proportions and calculate % of potential canopy that has
 # colored leaves
 dat <- dat %>%
-  rename(fall_percent = fall,
+  rename(fall_percent = fallen,
          color_percent = color) %>%
   mutate(fall = fall_percent/100,
          color = color_percent/100,
