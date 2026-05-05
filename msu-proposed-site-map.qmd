@@ -1,0 +1,167 @@
+---
+title: "MSU Campus Trees - Proposed Nature's Notebook Sites"
+format: html
+editor: visual
+page-layout: full
+---
+
+Below is a simple interactive map with locations of trees observed on the MSU campus between 2017 and 2025. Proposed sites for Nature's Notebook are outlined in black. Trees that were observed in 2025 are shown as filled circles, and trees that were not observed in 2025 are shown with open circles. Hovering over a point will display the tree species and accession number. Clicking on a point will display that information, plus the years that tree was monitored and the total number of observations submitted. A summary of trees in each proposed site is below the map.
+
+```{r gather-summarize-data}
+#| echo: FALSE
+#| output: FALSE
+#| warning: FALSE
+
+library(dplyr)
+library(leaflet)
+library(htmltools)
+library(terra)
+library(tidyterra)
+library(sf)
+library(kableExtra)
+
+# Load tree list (and remove any trees without lat/lon)
+trees <- read.csv("data/MSUTreeList.csv")
+trees <- trees %>%
+  mutate(common_name = factor(common_name)) %>%
+  filter(!is.na(latitude))
+
+# Load phenology data, 2017-2025
+dat <- read.csv("data/msu-phenology-data-2017-2025.csv")
+
+# Determine which years each tree was monitored and attach to tree list
+dat <- dat %>%
+  group_by(tree) %>%
+  summarize(minyr = min(year),
+            maxyr = max(year),
+            nyrs = n_distinct(year),
+            y2025 = ifelse(2025 %in% year, 1, 0),
+            nobs = n()) %>%
+  mutate(yrs = paste0(minyr, "-", maxyr)) %>%
+  mutate(obs = paste0(nyrs, " (", nobs, ")")) %>%
+  data.frame() %>%
+  select(tree, yrs, obs, y2025)
+trees <- trees %>%
+  left_join(dat, by = c("accession" = "tree"))
+
+# Load proposed sites
+sites <- vect("nn-sites/nn-sites-18.shp")
+
+# Number sites
+sites_centroid <- terra::centroids(sites) %>%
+  as.data.frame(geom = "XY") %>%
+  arrange(desc(y)) %>%
+  mutate(site_number = row_number())
+
+# Attach site to trees dataframe
+treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
+trees_sites <- terra::extract(sites, treesv)
+trees$site <- trees_sites$name
+# Attach site number to trees dataframe
+trees <- trees %>%
+  left_join(select(sites_centroid, name, site_number),
+            by = c("site" = "name"))
+
+# Summarize trees at each site
+sites_summary <- trees %>%
+  group_by(site_number, site) %>%
+  summarize(n_trees = n(),
+            n_spp = n_distinct(common_name),
+            n_trees_2025 = sum(y2025),
+            n_spp_2025 = n_distinct(common_name[y2025 == 1]),
+            .groups = "drop") %>%
+  data.frame()
+
+# Add site number to SpatVector
+sites <- sites %>%
+    left_join(select(sites_centroid, name, site_number), by = "name")
+
+```
+
+```{r map}
+#| echo: FALSE
+
+# Convert SpatVector to sf
+sites_sf <- sf::st_as_sf(sites)
+
+# Map settings
+pal_leaf <- leaflet::colorFactor(palette = "turbo", 
+                                 domain = unique(trees$common_name))
+
+treespp <- sort(unique(trees$common_name))
+cols <- pal_leaf(treespp)
+
+# Create map
+trees %>%
+  leaflet(height = 750) %>%
+  addProviderTiles(providers$OpenStreetMap,
+                   options = providerTileOptions(opacity = 0.6)) %>% 
+  addCircleMarkers(
+    data = filter(trees, y2025 == 0),
+    lng = ~longitude,
+    lat = ~latitude,
+    label = ~paste0(common_name, ": ", accession),
+    color = ~pal_leaf(common_name),
+    fillColor = ~pal_leaf(common_name),
+    fillOpacity = 0,
+    stroke = TRUE,
+    weight = 2,
+    radius = 5,
+    popup = ~paste0(common_name, "<br>",
+                    "ID: ", accession, "<br>", 
+                    "Years: ", yrs, "<br>",
+                    "No. years (no. obs): ", obs)
+  ) %>%
+  addCircleMarkers(
+    data = filter(trees, y2025 == 1),
+    lng = ~longitude,
+    lat = ~latitude,
+    label = ~paste0(common_name, ": ", accession),
+    fillColor = ~pal_leaf(common_name),
+    fillOpacity = 0.7,
+    color = "black",
+    stroke = TRUE,
+    weight = 2,
+    radius = 5,
+    popup = ~paste0(common_name, "<br>",
+                    "ID: ", accession, "<br>", 
+                    "Years: ", yrs, "<br>",
+                    "No. years (no. obs): ", obs)
+  ) %>%
+  addLegend(
+    position = "bottomleft",
+    pal = pal_leaf,
+    values = ~ common_name,
+    labels = ~common_name,
+    title = "Tree Species"
+  ) %>%
+  addPolylines(data = sites_sf, 
+               weight = 3) %>%
+  addLabelOnlyMarkers(data = sites_centroid, 
+                      lat = ~y,
+                      lng = ~x,
+                      label = ~site_number,
+                      labelOptions = labelOptions(
+                        noHide = TRUE,
+                        direction = "center",
+                        textOnly = TRUE,
+                        textsize = "20px",
+                        style = list("font-weight" = "bold",
+                                     "color" = "red"))) %>%
+  addScaleBar(
+    position = "topright"
+  )
+```
+
+
+\
+
+```{r table}
+#| echo: FALSE
+
+sites_summary %>%
+  kable(col.names = c("Site number", "Name", "No. trees", "No. species", "No. trees", "No. species"),
+        align = c("c", "r", rep("c", 4))) %>%
+  add_header_above(header = c(" " = 2, "Total" = 2, "Observed in 2025" = 2))
+
+```
