@@ -45,37 +45,27 @@ trees <- trees %>%
   left_join(dat, by = c("accession" = "tree"))
 
 # Load proposed sites
-sites <- vect("nn-sites/nn-sites-18.shp")
+sites <- vect("nn-sites/nn-sites-revised.shp")
 
-# Number sites
+# Get centroid locations for labeling
 sites_centroid <- terra::centroids(sites) %>%
-  as.data.frame(geom = "XY") %>%
-  arrange(desc(y)) %>%
-  mutate(site_number = row_number())
+  as.data.frame(geom = "XY")
 
 # Attach site to trees dataframe
 treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
 trees_sites <- terra::extract(sites, treesv)
 trees$site <- trees_sites$name
-# Attach site number to trees dataframe
-trees <- trees %>%
-  left_join(select(sites_centroid, name, site_number),
-            by = c("site" = "name"))
+trees$site_no <- trees_sites$site_no
 
 # Summarize trees at each site
 sites_summary <- trees %>%
-  group_by(site_number, site) %>%
+  group_by(site_no, site) %>%
   summarize(n_trees = n(),
             n_spp = n_distinct(common_name),
             n_trees_2025 = sum(y2025),
             n_spp_2025 = n_distinct(common_name[y2025 == 1]),
             .groups = "drop") %>%
   data.frame()
-
-# Add site number to SpatVector
-sites <- sites %>%
-    left_join(select(sites_centroid, name, site_number), by = "name")
-
 ```
 
 ```{r map}
@@ -109,6 +99,7 @@ trees %>%
     radius = 5,
     popup = ~paste0(common_name, "<br>",
                     "ID: ", accession, "<br>", 
+                    "Site number: ", site_no, "<br>",
                     "Years: ", yrs, "<br>",
                     "No. years (no. obs): ", obs)
   ) %>%
@@ -124,7 +115,8 @@ trees %>%
     weight = 2,
     radius = 5,
     popup = ~paste0(common_name, "<br>",
-                    "ID: ", accession, "<br>", 
+                    "ID: ", accession, "<br>",
+                    "Site number: ", site_no, "<br>",
                     "Years: ", yrs, "<br>",
                     "No. years (no. obs): ", obs)
   ) %>%
@@ -140,7 +132,7 @@ trees %>%
   addLabelOnlyMarkers(data = sites_centroid, 
                       lat = ~y,
                       lng = ~x,
-                      label = ~site_number,
+                      label = ~site_no,
                       labelOptions = labelOptions(
                         noHide = TRUE,
                         direction = "center",
