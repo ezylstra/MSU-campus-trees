@@ -38,7 +38,7 @@ treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
 options(viewer = NULL)
 
 # Load original polygons shapefile --------------------------------------------#
-sites_sf <- st_read("nn-sites/nn-sites-18.shp") %>%
+sites_sf <- st_read("nn-sites/nn-sites-revised.shp") %>%
   st_transform(4326)
 
 # Edit original polygons ------------------------------------------------------#
@@ -74,7 +74,7 @@ st_write(batch9, "nn-sites/nn-sites-revised.shp")
 
 sites <- vect("nn-sites/nn-sites-revised.shp") 
 crs(sites) <- crs(treesv)
-writeVector(sites, "nn-sites/nn-sites-revised.shp")
+writeVector(sites, "nn-sites/nn-sites-revised2.shp")
 
 # Remove batch files
 batch_filelist <- list.files("nn-sites", pattern = "batch", full.names = TRUE)
@@ -82,7 +82,7 @@ file.remove(batch_filelist)
 
 # Format and clean up ---------------------------------------------------------#
 
-sites <- vect("nn-sites/nn-sites-revised.shp")
+sites <- vect("nn-sites/nn-sites-revised2.shp")
 
 # Number sites
 sites_centroid <- terra::centroids(sites) %>%
@@ -134,7 +134,7 @@ sites <- sites %>%
 
 # Save sites file with names 
 names(sites) <- c("name", "site_no")
-writeVector(sites, "nn-sites/nn-sites-revised.shp", overwrite = TRUE)
+writeVector(sites, "nn-sites/nn-sites-revised2.shp", overwrite = TRUE)
 
 
 # Check tree assignments ------------------------------------------------------#

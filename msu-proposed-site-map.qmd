@@ -5,7 +5,7 @@ editor: visual
 page-layout: full
 ---
 
-Below is a simple interactive map with locations of trees observed on the MSU campus between 2017 and 2025. Proposed sites for Nature's Notebook are outlined in blue (with red ID numbers near the center). Trees that were observed in 2025 are shown as filled circles, and trees that were not observed in 2025 are shown with open circles. Hovering over a point will display the tree species and accession number. Clicking on a point will display that information, plus the years that tree was monitored and the total number of observations submitted. A summary of trees in each proposed site is below the map.
+Below is a simple interactive map with locations of trees observed on the MSU campus between 2017 and 2025. Proposed sites for Nature's Notebook are outlined in blue (with tentative names in the center). Trees that were observed in 2025 are shown as filled circles, and trees that were not observed in 2025 are shown with open circles. Hovering over a tree marker will display the tree species and accession number. Clicking on a circle will display that information, plus the years that tree was monitored and the total number of observations submitted. A summary of trees in each proposed site is below the map (sites that don't have any current trees are not listed).
 
 ```{r gather-summarize-data}
 #| echo: FALSE
@@ -45,7 +45,7 @@ trees <- trees %>%
   left_join(dat, by = c("accession" = "tree"))
 
 # Load proposed sites and names
-sites <- vect("nn-sites/nn-sites-revised.shp")
+sites <- vect("nn-sites/nn-sites-revised2.shp")
 sitenames <- read.csv("nn-sites/nn-site-names-revised.csv")
 
 # Get centroid locations for labeling
@@ -138,14 +138,19 @@ trees %>%
   addLabelOnlyMarkers(data = sites_centroid, 
                       lat = ~y,
                       lng = ~x,
-                      label = ~sitename,
+                      label = ~lapply(
+                        stringr::str_replace_all(stringr::str_wrap(sitename, width = 20), 
+                                                 "\n", "<br>"),
+                        htmltools::HTML
+                      ),
                       labelOptions = labelOptions(
                         noHide = TRUE,
                         direction = "center",
                         textOnly = TRUE,
                         textsize = "14px",
                         style = list("font-weight" = "bold",
-                                     "color" = "black"))) %>%
+                                     "color" = "black",
+                                     "text-align" = "center"))) %>%
   addScaleBar(
     position = "topright"
   )
