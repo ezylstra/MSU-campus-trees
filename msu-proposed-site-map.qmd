@@ -44,22 +44,28 @@ dat <- dat %>%
 trees <- trees %>%
   left_join(dat, by = c("accession" = "tree"))
 
-# Load proposed sites
+# Load proposed sites and names
 sites <- vect("nn-sites/nn-sites-revised.shp")
+sitenames <- read.csv("nn-sites/nn-site-names-revised.csv")
 
 # Get centroid locations for labeling
 sites_centroid <- terra::centroids(sites) %>%
-  as.data.frame(geom = "XY")
+  as.data.frame(geom = "XY") %>%
+  left_join(select(sitenames, -current_name), by = c("site_no" = "number")) %>%
+  rename(sitename = new_name)
 
 # Attach site to trees dataframe
 treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
 trees_sites <- terra::extract(sites, treesv)
 trees$site <- trees_sites$name
 trees$site_no <- trees_sites$site_no
+trees <- left_join(trees, select(sitenames, -current_name), 
+                   by = c("site_no" = "number")) %>%
+  rename(sitename = new_name)
 
 # Summarize trees at each site
 sites_summary <- trees %>%
-  group_by(site_no, site) %>%
+  group_by(site_no, sitename) %>%
   summarize(n_trees = n(),
             n_spp = n_distinct(common_name),
             n_trees_2025 = sum(y2025),
@@ -132,14 +138,14 @@ trees %>%
   addLabelOnlyMarkers(data = sites_centroid, 
                       lat = ~y,
                       lng = ~x,
-                      label = ~site_no,
+                      label = ~sitename,
                       labelOptions = labelOptions(
                         noHide = TRUE,
                         direction = "center",
                         textOnly = TRUE,
-                        textsize = "20px",
+                        textsize = "14px",
                         style = list("font-weight" = "bold",
-                                     "color" = "red"))) %>%
+                                     "color" = "black"))) %>%
   addScaleBar(
     position = "topright"
   )
