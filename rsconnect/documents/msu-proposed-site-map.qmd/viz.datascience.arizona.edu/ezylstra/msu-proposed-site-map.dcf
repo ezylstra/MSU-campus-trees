@@ -5,7 +5,7 @@ account: ezylstra
 server: viz.datascience.arizona.edu
 hostUrl: https://viz.datascience.arizona.edu/__api__
 appId: 1429
-bundleId: 9770
+bundleId: 9860
 url: https://viz.datascience.arizona.edu:443/msu-campus-trees-NNsites/
 version: 1
 asMultiple: FALSE
