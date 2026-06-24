@@ -1,5 +1,5 @@
 # Creating files for importing MSU data to NPN database
-# 23 June 2026
+# 24 June 2026
 
 library(dplyr)
 library(stringr)
@@ -56,55 +56,56 @@ stations <- sites_centroid %>%
          state, country, area_of_site, area_of_site_units_id)
   
 # Write to file (commented out for now to avoid overwriting accidentally)
-# write.csv(stations, "nn-import/stations.csv", row.names = FALSE)
+# write.csv(stations, "nn-import/station.csv", row.names = FALSE)
 
 # Trees import ----------------------------------------------------------------#
 
-# Attach site to trees dataframe
+# Get NPN species ID numbers and common names
+npn_spp <- npn_species() %>%
+  select(species_id, genus, species, common_name) %>%
+  mutate(scientific_name = paste(genus, species)) %>%
+  data.frame()
+
+# Correct spelling of coffeetree species and add NPN species information 
+trees <- trees %>%
+  mutate(scientific_name = ifelse(scientific_name == "Gymnocladus dioicius",
+                                  "Gymnocladus dioicus", scientific_name)) %>%
+  rename(msu_common_name = common_name) %>%
+  left_join(select(npn_spp, species_id, common_name, scientific_name),
+            by = "scientific_name") %>%
+  select(-msu_common_name)
+
+# Remove eastern white pine from tree list since MSU collected data on 
+# phenophases that are not available for that species in the database
+trees <- trees %>%
+  filter(common_name != "eastern white pine")
+
+# Attach site to trees dataframe and generate tree "nicknames" (combination
+# of species common names and accession numbers)
 treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
 trees_sites <- terra::extract(sites, treesv)
 trees$station_name <- trees_sites$sitename
 trees <- trees %>%
   left_join(select(stations, station_id, station_name), by = "station_name") %>%
-  mutate(lat_lon_datum = "WGS84") %>%
-  rename(individual_userstr = accession)
+  mutate(individual_userstr = paste0(common_name, "-", accession))
 
-# Get NPN species ID numbers and common names
-spp <- npn_species() %>%
-  select(-species_type) %>%
+# If trees were monitored in 2025, list them as active (1).
+active_trees <- dat %>%
+  rename(accession = tree) %>%
+  group_by(accession) %>%
+  summarize(active = ifelse(2025 %in% year, 1, 0)) %>%
   data.frame()
-
-# Active (1/0): use info about whether monitored in 2025
-
-
-  
-
-
-
-
-
-# Determine which years each tree was monitored and attach to tree list
-dat <- dat %>%
-  group_by(tree) %>%
-  summarize(minyr = min(year),
-            maxyr = max(year),
-            nyrs = n_distinct(year),
-            y2025 = ifelse(2025 %in% year, 1, 0),
-            nobs = n()) %>%
-  mutate(yrs = paste0(minyr, "-", maxyr)) %>%
-  mutate(obs = paste0(nyrs, " (", nobs, ")")) %>%
-  data.frame() %>%
-  select(tree, yrs, obs, y2025)
 trees <- trees %>%
-  left_join(dat, by = c("accession" = "tree"))
+  left_join(active_trees, by = "accession")
 
+# Create station-species-indiviudal table (make up 8-digit indiviual IDs for now 
+# for easy matching)
+ssi <- trees %>%
+  mutate(individual_id = 10000000 + 1:nrow(trees)) %>%
+  mutate(lat_lon_datum = "WGS84") %>%
+  select(individual_id, station_id, station_name, species_id, 
+         individual_userstr, latitude, longitude, lat_lon_datum)
 
+# Write to file (commented out for now to avoid overwriting accidentally)
+# write.csv(ssi, "nn-import/station-species-individual.csv", row.names = FALSE)
 
-# Attach site to trees dataframe
-treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
-trees_sites <- terra::extract(sites, treesv)
-trees$site <- trees_sites$name
-trees$site_no <- trees_sites$site_no
-trees <- left_join(trees, select(sitenames, -current_name), 
-                   by = c("site_no" = "number")) %>%
-  rename(sitename = new_name)
