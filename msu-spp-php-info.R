@@ -1,5 +1,5 @@
 # Creating protocol/phenophase information to import MSU data to NPN database
-# 24 June 2026
+# 26 June 2026
 
 library(DBI)
 library(odbc)
@@ -38,13 +38,19 @@ species <- tbl(con, "Species") %>%
 # Get protocol ID for each species 
 protocols <- tbl(con, "Species_Protocol") %>%
   filter(Species_ID %in% species$Species_ID) %>%
-  filter(Active == 1) %>%
+  filter(is.na(End_Date) | End_Date >= "2017-01-01") %>%
   filter(is.na(Dataset_ID)) %>%
   collect()
 protocols
 # Most use 233 or 234, which were started in 2012 EXCEPT:
-# eastern white pine (53) uses 437, which started in Mar 2026
-# dawn redwood (1356) uses 438, which started in Mar 2026
+  # eastern white pine (53) used 230 until Mar 2026, then 437
+  # dawn redwood (1356) used 231 until Mar 2026, then 438
+  # New protocols were issued due to changes in thr fruit-related phenophases,
+  # so irrelevant here. 
+
+# Extracting protocols used for 2017-2025
+protocols <- protocols %>%
+  filter(!Protocol_ID %in% c(437, 438))
 
 # Add protocol ID to species table
 species <- species %>%
