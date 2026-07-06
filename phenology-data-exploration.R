@@ -17,12 +17,12 @@ library(ggplot2)
 # out is code to read data from a local file (in a data folder)
 
 # Phenology data
-df <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/msu-phenology-data.csv")
-# df <- read.csv("data/msu-phenology-data.csv")
+# df <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/msu-phenology-data-2017-2025.csv")
+df <- read.csv("data/msu-phenology-data-2017-2025.csv")
 
 # Tree information (species, location)
-trees <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/MSUTreeList.csv")
-# trees <- read.csv("data/MSUTreeList.csv")
+# trees <- read.csv("https://raw.githubusercontent.com/ezylstra/MSU-campus-trees/refs/heads/main/data/MSUTreeList.csv")
+trees <- read.csv("data/MSUTreeList.csv")
 
 # Format tree data ------------------------------------------------------------#
 
@@ -61,11 +61,87 @@ df <- df %>%
   mutate(date = ymd(date)) %>%
   mutate(submission = parse_date_time(submission, orders = "YmdhMS")) %>%  
   mutate(doy = yday(date)) %>%
-  filter(fall >= 0 & color >= 0)
+  filter(fallen >= 0 & color >= 0)
 
 # Look at structure and summary of data
 str(df)
 summary(df)
+
+# Are values  between 0 and 1 legitimate or are they observations that were
+# incorrectly entered as a proportion (eg, 0.5 is supposed to be 50%)?
+  # Look at other values for that tree around that date
+  # Look at other values from that student
+
+# There are instances where one or the other is potentially problematic
+count(df, fallen > 0 & fallen < 1, color > 0 & color < 1)
+
+fract <- df %>%
+  mutate(fallen_fract = ifelse(fallen > 0 & fallen < 1, 1, 0),
+         color_fract = ifelse(color > 0 & color < 1, 1, 0)) %>%
+  filter(fallen_fract + color_fract > 0) %>%
+  mutate(treeyr = paste0(tree, "_", year))
+count(fract, common_name, tree)  # 102 trees
+count(fract, year) # 31-86 each year from 2021-2025
+count(fract, ObserverID) # 95 observers
+
+# Look at observers (proportion of non-zero observations that are <1)
+fractobs <- df %>%
+  mutate(fractobs = ifelse(ObserverID %in% unique(fract$ObserverID), 1, 0)) %>%
+  group_by(ObserverID, fractobs) %>%
+  summarize(n = n(),
+            n0_fallen = sum(fallen == 0),
+            nfract_fallen = sum(fallen > 0 & fallen < 1),
+            nint_fallen = sum(fallen >= 1),
+            n0_color = sum(color == 0),
+            nfract_color = sum(color > 0 & color < 1),
+            nint_color = sum(color >= 1),
+            .groups = "drop") %>%
+  mutate(propfract_fallen = nfract_fallen/n,
+         propfract_color = nfract_color/n,
+         propfract_fallenv = nfract_fallen/(nfract_fallen + nint_fallen),
+         propfract_colorv = nfract_color/(nfract_color + nint_color)) %>%
+  data.frame()
+# There does seem to be a correlation between fallen & color.....
+ggplot(fractobs) +
+  geom_point(aes(x = propfract_fallenv, y = propfract_colorv))
+# ...but very few observers had fractions comprise >=25% of non-zero observations 
+fractobs %>%
+  filter(fractobs == 1) %>%
+  count(propfract_fallenv >= 0.25,
+        propfract_colorv >= 0.25)
+# Looks like most observers meant to report a very small value...
+
+# Look at trees (observations within a week of fractional observation)
+fract$fallen_avg <- NA
+fract$fallen_prop0 <- NA
+fract$color_avg <- NA
+fract$color_prop0
+for (i in 1:nrow(fract)) {
+  obs <- df %>%
+    filter(tree == fract$tree[i], 
+           abs(as.numeric(date - fract$date[i])) <= 7)
+  obs_fallen <- obs$fallen[obs$fallen == 0 | obs$fallen >= 1]
+  obs_color <- obs$color[obs$color == 0 | obs$color >= 1]  
+  fract$fallen_avg[i] <- mean(obs_fallen)
+  fract$fallen_prop0[i] <- sum(obs_fallen == 0)/length(obs_fallen)
+  fract$color_avg[i] <- mean(obs_color)
+  fract$color_prop0[i] <- sum(obs_color == 0)/length(obs_color)
+}
+# Average of fallen/color values within 2-week period is typically < 25%,
+# so decent chance the student meant to report a small value.
+fract %>%
+  pivot_longer(cols = c(fallen_avg, color_avg),
+               names_to = "metric",
+               values_to = "average") %>%
+  ggplot() +
+  geom_histogram(aes(x = average), bins = 30) +
+  facet_wrap(~metric, ncol = 1)
+
+# Given that many, but not all, of the fractional values look like they might
+# have been legit, it's probably safer to delete them.
+df <- df %>%
+  filter(fallen == 0 | fallen >= 1) %>%
+  filter(color == 0 | color >= 1)
 
 # Histogram of observation dates with blue vertical lines denoting proposed
 # min/max dates
