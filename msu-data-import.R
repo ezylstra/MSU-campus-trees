@@ -1,5 +1,5 @@
 # Creating files for importing MSU data to NPN database
-# 25 June 2026
+# 8 July 2026
 
 library(dplyr)
 library(stringr)
@@ -7,10 +7,6 @@ library(lubridate)
 library(terra)
 library(tidyterra)
 library(tidyr)
-
-#### There are 179 records where original %fallen values are between 0 and 1 
-#### (eg, 0.01), and many of these also have color values between 0 and 1. 
-#### Delete these records or assume the students entered proportions?
 
 # Load files ------------------------------------------------------------------#
 
@@ -38,10 +34,11 @@ colnames(phpint) <- str_to_lower(colnames(phpint))
 sites <- sites %>%
   left_join(select(sitenames, -current_name), by = c("site_no" = "number")) %>%
   select(-name) %>%
-  rename(sitename = new_name)
+  rename(sitename = new_name,
+         msu_site_no = site_no)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
-# writeVector(sites, "nn-import/msu-sites.shp")
+# writeVector(sites, "nn-import/msu-sites.shp", overwrite = TRUE)
 
 # Get centroid locations
 sites_centroid <- terra::centroids(sites) %>%
@@ -52,9 +49,10 @@ sites_centroid <- terra::centroids(sites) %>%
 # Get site areas (in sq meters)
 sites_centroid$area_m2 <- round(terra::expanse(sites, unit = "m"))
 
-# Create station table (make up 6-digit station IDs for now for easy matching)
+# Create station table (will use station_name for matching until station ID id
+# created)
 stations <- sites_centroid %>%
-  mutate(station_id = 100000 + 1:nrow(sites_centroid)) %>%
+  # mutate(station_id = 100000 + 1:nrow(sites_centroid)) %>%
   mutate(lat_lon_datum = "WGS84",
          state = "MI",
          country = "USA",
@@ -63,7 +61,7 @@ stations <- sites_centroid %>%
          longitude = lon,
          station_name = sitename,
          area_of_site = area_m2) %>%
-  select(station_id, station_name, latitude, longitude, lat_lon_datum,
+  select(station_name, latitude, longitude, lat_lon_datum,
          state, country, area_of_site, area_of_site_units_id)
   
 # Write to file (commented out for now to avoid overwriting accidentally)
@@ -97,7 +95,6 @@ treesv <- vect(trees, geom = c("longitude", "latitude"), crs = "epsg:4326")
 trees_sites <- terra::extract(sites, treesv)
 trees$station_name <- trees_sites$sitename
 trees <- trees %>%
-  left_join(select(stations, station_id, station_name), by = "station_name") %>%
   mutate(individual_userstr = paste0(common_name, "-", accession))
 
 # If trees were monitored in 2025, list them as active (1).
@@ -109,14 +106,13 @@ active_trees <- dat %>%
 trees <- trees %>%
   left_join(active_trees, by = "accession")
 
-# Create station-species-indiviudal table (make up 8-digit indiviual IDs for now 
-# for easy matching)
+# Create station-species-individual table (will use plant nickname [individual_userstr]
+# for matching until Individual IDs are created)
 trees <- trees %>%
-  mutate(individual_id = 10000000 + 1:nrow(trees)) %>%
   mutate(lat_lon_datum = "WGS84") 
 ssi <- trees %>%
-  select(individual_id, station_id, station_name, species_id, 
-         individual_userstr, latitude, longitude, lat_lon_datum)
+  select(station_name, species_id, individual_userstr, latitude, longitude, 
+         lat_lon_datum)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(ssi, "nn-import/station-species-individual.csv", row.names = FALSE)
@@ -126,21 +122,18 @@ ssi <- trees %>%
 # Extract unique observer IDs
 anonobs <- sort(unique(dat$observerid))
 
-# Will put unique 8-digit number identifying observers into the last_name field
+# Will put unique 8-digit number identifying 2018-2025 observers into the 
+# last_name field (this will be used for matching until Observer/Person IDs
+# are created)
 anon <- data.frame(first_name = NA,
                    middle_name = NA,
                    last_name = anonobs, 
                    email = NA,
                    active = 0,
                    comments = "MSU campus trees project student observer, pre 2026")
-# Create temporary person_id (to match up with status data)
-# Using IDs < -6000 and > -10000
-anon <- anon %>%
-  mutate(person_id = 1:nrow(anon)*(-1) - 6000, .before = first_name)
 
 # Create fictional observer for 2017 (we don't have observer info this year)
-obs17 <- data.frame(person_id = -6000,
-                    first_name = "MSU",
+obs17 <- data.frame(first_name = "MSU",
                     middle_name = NA,
                     last_name = "Student",
                     email = NA,
@@ -156,16 +149,32 @@ persons <- rbind(obs17, anon)
 # Need to create this table, but no extra information will be conveyed here.
 # Will just create a unique ID for every student/tree/date combination
 
-# First, need to remove any duplicate observations (same student, tree, day and
-# same color/fallen values). We can remove the submission column since this 
-# isn't useful for NPN database. The date column indicates what day the 
+# First, want to remove any observations that we don't want to import. This 
+# includes: 
+  # 1) observations with negative fallen or color values or values that are
+  #    between 0 and 1 (since it's unclear whether the student intended to
+  #    report a very small value or erroneously reported value as a proportion 
+  #    instead of a percent - see exploration in phenology-data-exploration.R)
+  # 2) observations of white pine or trees that don't have lat/lons
+  # Note: there are a few observations with non-integer color/fallen values that
+  # are > 1, but these aren't necessarily problematic. Will leave as is.
+
+dat <- dat %>%
+  filter(color == 0 | color >= 1) %>%
+  filter(fallen == 0 | fallen >= 1) %>%
+  filter(tree %in% trees$accession)
+  
+# Then, need to remove any duplicate observations (same student, tree, day and
+# same color/fallen values). We can remove the submission datetime column since
+# this isn't useful for the NPN database. The date column indicates what day the 
 # observations were made.
 dat <- dat %>%
   select(-submission) %>%
   distinct()
 
 # Are there times when a student made multiple observations on one tree on the
-# same day?
+# same day? (Temporarily using "unk_#" for 2017 observations, where each row
+# gets a different #, since we don't have Observer IDs for that year)
 sttreeday <- dat %>%
   mutate(observerid = ifelse(is.na(observerid),
                              paste0("unk_", row_number()),
@@ -189,26 +198,20 @@ dat <- dat %>%
                                        "_", observerid, "_", obsnumber)) %>%
   data.frame()
 
-# Attach site, tree, person information 
+# Attach site, tree information 
 dat <- dat %>%
-  left_join(select(trees, accession, individual_id, individual_userstr,
-                   species_id, station_id, station_name), 
+  left_join(select(trees, accession, individual_userstr,
+                   species_id, station_name), 
             by = c("tree" = "accession")) %>%
-  mutate(observer_id = ifelse(str_detect(observerid, "unk"), 
-                              "Student", observerid)) %>%
-  left_join(select(persons, person_id, last_name), 
-            by = c("observer_id" = "last_name"))
+  mutate(last_name = ifelse(str_detect(observerid, "unk"), 
+                            "Student", observerid))
 
-# Remove observations of eastern white pines and trees that don't have exact
-# coordinates (ie, individuals excluded from the trees table and so don't have
-# station listed in dat)
-dat <- dat %>%
-  filter(!is.na(station_name))
-  
+# Check that each observation has a site name
+# count(dat, station_name)
+
 # Create observation-group table
 og <- dat %>%
-  select(observation_group_id, date, person_id, station_id, station_name) %>%
-  mutate(notes = NA)
+  select(observation_group_id, date, last_name, station_name)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(og, "nn-import/observation-group.csv", row.names = FALSE)
@@ -232,12 +235,8 @@ dat <- dat %>%
 # Percent of canopy with leaves (leaves phenophase)
 # Percent of canopy with colored leaves (colored leaves phenophase)
 
-# Delete any observations with negative fall or color values
-dat <- dat %>%
-  filter(color >= 0 & fallen >= 0)
-
 # Convert percents to proportions and calculate proportion of cannopy with
-# leaves (canoyp) and proportion of potential canopy that has colored leaves
+# leaves (canopy) and proportion of potential canopy that has colored leaves
 # (color_canopy)
 dat <- dat %>%
   rename(fall_percent = fallen,
@@ -285,8 +284,8 @@ dat$intensity_coloredcanopy[dat$status_coloredleaves == 0] <- NA
 # Keep just NPN-relevant columns (or MSU data that we'll want to put in 
 # comments field)
 dat <- dat %>%
-  select(observation_group_id, person_id, observer_id, date, individual_userstr, 
-         individual_id, species_id, protocol_id, contains("status_"), 
+  select(observation_group_id, last_name, date, individual_userstr, 
+         species_id, protocol_id, contains("status_"), 
          contains("intensity_"), canopy, color_canopy, color_percent, 
          fall_percent)
 
@@ -338,7 +337,7 @@ datl <- datl %>%
 # check:
 # count(datl, intensity_number, abundance_value)
 
-# Attach phenopohase_id abundance_category_id, abundance_value_id
+# Attach phenophase_id abundance_category_id, abundance_value_id
 phpint_subs <- phpint %>%
   distinct(species_id, pheno_class_id, phenophase_id, phenophase_description,
            abundance_category_id, abundance_name)
@@ -370,8 +369,11 @@ observations <- datl %>%
          abundance_category = abundance_category_id,
          abundance_category_value = abundance_value_id) %>%
   mutate(raw_abundance_value = raw_abundance_value * 100) %>%
-  select(person_id, observer_id, observation_date, phenophase_id, 
+  select(last_name, observation_date, phenophase_id, 
          phenophase_description, phenophase_status, individual_userstr, 
-         individual_id, observation_group_id, protocol_id, abundance_category, 
-         abundance_category_value, raw_abundance_value, comment)
+         observation_group_id, protocol_id, abundance_category, 
+         abundance_category_value, raw_abundance_value, comment) %>%
+  arrange(observation_group_id, phenophase_id)
 
+# Write to file (commented out for now to avoid overwriting accidentally)
+# write.csv(observations, "nn-import/observation.csv", row.names = FALSE)
