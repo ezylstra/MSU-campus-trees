@@ -130,7 +130,7 @@ anon <- data.frame(first_name = NA,
                    last_name = anonobs, 
                    email = NA,
                    active = 0,
-                   comments = "MSU campus trees project student observer, pre 2026")
+                   comments = "MSU campus trees project student observer, 2018-2025")
 
 # Create fictional observer for 2017 (we don't have observer info this year)
 obs17 <- data.frame(first_name = "MSU",
