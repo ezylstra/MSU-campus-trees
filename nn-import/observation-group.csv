@@ -1,4 +1,4 @@
-"observation_group_id","date","last_name","station_name"
+"observation_group_name","date","last_name","station_name"
 "20170910_CC4333*01_unk_1_1","2017-09-10","Student","Hannah Administration Building"
 "20170911_CC0192*01_unk_2_1","2017-09-11","Student","Music Building"
 "20170911_CC0597*01_unk_3_1","2017-09-11","Student","Beal Botanical Garden"

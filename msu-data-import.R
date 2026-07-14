@@ -1,5 +1,5 @@
 # Creating files for importing MSU data to NPN database
-# 8 July 2026
+# 14 July 2026
 
 library(dplyr)
 library(stringr)
@@ -49,7 +49,7 @@ sites_centroid <- terra::centroids(sites) %>%
 # Get site areas (in sq meters)
 sites_centroid$area_m2 <- round(terra::expanse(sites, unit = "m"))
 
-# Create station table (will use station_name for matching until station ID id
+# Create station table (will use station_name for matching until station ID is
 # created)
 stations <- sites_centroid %>%
   # mutate(station_id = 100000 + 1:nrow(sites_centroid)) %>%
@@ -112,7 +112,7 @@ trees <- trees %>%
   mutate(lat_lon_datum = "WGS84") 
 ssi <- trees %>%
   select(station_name, species_id, individual_userstr, latitude, longitude, 
-         lat_lon_datum)
+         lat_lon_datum, active)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(ssi, "nn-import/station-species-individual.csv", row.names = FALSE)
@@ -147,7 +147,7 @@ persons <- rbind(obs17, anon)
 # Observation group (site visit) table ----------------------------------------#
 
 # Need to create this table, but no extra information will be conveyed here.
-# Will just create a unique ID for every student/tree/date combination
+# Will just create a unique name for every student/tree/date combination
 
 # First, want to remove any observations that we don't want to import. This 
 # includes: 
@@ -194,8 +194,8 @@ dat <- dat %>%
   group_by(observerid, tree, date) %>%
   mutate(obsnumber = 1:n()) %>%
   ungroup() %>%
-  mutate(observation_group_id = paste0(str_remove_all(date, "-"), "_", tree, 
-                                       "_", observerid, "_", obsnumber)) %>%
+  mutate(observation_group_name = paste0(str_remove_all(date, "-"), "_", tree, 
+                                         "_", observerid, "_", obsnumber)) %>%
   data.frame()
 
 # Attach site, tree information 
@@ -211,7 +211,7 @@ dat <- dat %>%
 
 # Create observation-group table
 og <- dat %>%
-  select(observation_group_id, date, last_name, station_name)
+  select(observation_group_name, date, last_name, station_name)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(og, "nn-import/observation-group.csv", row.names = FALSE)
@@ -284,7 +284,7 @@ dat$intensity_coloredcanopy[dat$status_coloredleaves == 0] <- NA
 # Keep just NPN-relevant columns (or MSU data that we'll want to put in 
 # comments field)
 dat <- dat %>%
-  select(observation_group_id, last_name, date, individual_userstr, 
+  select(observation_group_name, last_name, date, individual_userstr, 
          species_id, protocol_id, contains("status_"), 
          contains("intensity_"), canopy, color_canopy, color_percent, 
          fall_percent)
@@ -371,9 +371,9 @@ observations <- datl %>%
   mutate(raw_abundance_value = raw_abundance_value * 100) %>%
   select(last_name, observation_date, phenophase_id, 
          phenophase_description, phenophase_status, individual_userstr, 
-         observation_group_id, protocol_id, abundance_category, 
+         observation_group_name, protocol_id, abundance_category, 
          abundance_category_value, raw_abundance_value, comment) %>%
-  arrange(observation_group_id, phenophase_id)
+  arrange(observation_group_name, phenophase_id)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(observations, "nn-import/observation.csv", row.names = FALSE)
