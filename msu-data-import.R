@@ -1,5 +1,5 @@
 # Creating files for importing MSU data to NPN database
-# 14 July 2026
+# 16 July 2026
 
 library(dplyr)
 library(stringr)
@@ -111,8 +111,11 @@ trees <- trees %>%
 trees <- trees %>%
   mutate(lat_lon_datum = "WGS84") 
 ssi <- trees %>%
-  select(station_name, species_id, individual_userstr, latitude, longitude, 
-         lat_lon_datum, active)
+  select(station_name, species_id, common_name, individual_userstr, latitude, 
+         longitude, lat_lon_datum, active)
+# Note: want to include common_name and not just species_id since species_id 
+# can be added as part of the import script. If we test things on the dev DB, 
+# there's a chance that a species_id may not be the same.
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(ssi, "nn-import/station-species-individual.csv", row.names = FALSE)
@@ -122,12 +125,13 @@ ssi <- trees %>%
 # Extract unique observer IDs
 anonobs <- sort(unique(dat$observerid))
 
-# Will put unique 8-digit number identifying 2018-2025 observers into the 
-# last_name field (this will be used for matching until Observer/Person IDs
-# are created)
+# Will put unique 8-digit number identifying 2018-2025 observers, with a prefix, 
+# into the UserName field (this will be used for matching until Observer/Person 
+# IDs are created)
 anon <- data.frame(first_name = NA,
                    middle_name = NA,
-                   last_name = anonobs, 
+                   last_name = NA, 
+                   username = paste0("MSU_Student_", anonobs),
                    email = NA,
                    active = 0,
                    comments = "MSU campus trees project student observer, 2018-2025")
@@ -136,12 +140,18 @@ anon <- data.frame(first_name = NA,
 obs17 <- data.frame(first_name = "MSU",
                     middle_name = NA,
                     last_name = "Student",
+                    username = "MSU_Student_00000000",
                     email = NA,
                     active = 0,
                     comments = "Fictional person for MSU campus trees project in 2017, when no observer listed")
 
-# Combine and write to file (commented out for now to avoid overwriting accidentally)
-persons <- rbind(obs17, anon)
+# Combine and add create_date field (this would typically be when a user first
+# sets up an account. Here, we'll set the create_date as Jan 1, 2017 for all MSU
+# students to ensure that the create_date precedes any observations)
+persons <- rbind(obs17, anon) %>%
+  mutate(create_date = "2017-01-01", .before = active)
+
+# write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(persons, "nn-import/person.csv", row.names = FALSE)
 
 # Observation group (site visit) table ----------------------------------------#
@@ -200,18 +210,21 @@ dat <- dat %>%
 
 # Attach site, tree information 
 dat <- dat %>%
+  rename(msu_common_name = common_name) %>%
   left_join(select(trees, accession, individual_userstr,
-                   species_id, station_name), 
+                   species_id, common_name, station_name), 
             by = c("tree" = "accession")) %>%
-  mutate(last_name = ifelse(str_detect(observerid, "unk"), 
-                            "Student", observerid))
+  mutate(username = ifelse(str_detect(observerid, "unk"), 
+                           "MSU_Student_00000000", 
+                           paste0("MSU_Student_", observerid))) %>%
+  select(-msu_common_name)
 
 # Check that each observation has a site name
 # count(dat, station_name)
 
 # Create observation-group table
 og <- dat %>%
-  select(observation_group_name, date, last_name, station_name)
+  select(observation_group_name, date, username, station_name)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
 # write.csv(og, "nn-import/observation-group.csv", row.names = FALSE)
@@ -220,12 +233,10 @@ og <- dat %>%
 
 # First remove unnecessary columns
 dat <- dat %>%
-  select(-c(observerid, sectionid, tree, scientific_name, year, common_name,
-            latitude, longitude, obsnumber))
+  select(-c(observerid, sectionid, tree, scientific_name, year, latitude,
+            longitude, obsnumber))
 
-# Add in protocol ID
-dat <- dat %>%
-  left_join(distinct(phpint, species_id, protocol_id), by = "species_id")
+# Will NOT add protocol ID -- this will actually be dataset specific. 
 
 # In MSU data:
 # Color = percent of leaves that are colored
@@ -284,19 +295,18 @@ dat$intensity_coloredcanopy[dat$status_coloredleaves == 0] <- NA
 # Keep just NPN-relevant columns (or MSU data that we'll want to put in 
 # comments field)
 dat <- dat %>%
-  select(observation_group_name, last_name, date, individual_userstr, 
-         species_id, protocol_id, contains("status_"), 
-         contains("intensity_"), canopy, color_canopy, color_percent, 
-         fall_percent)
+  select(observation_group_name, username, date, individual_userstr, 
+         species_id, common_name, contains("status_"), contains("intensity_"), 
+         canopy, color_canopy, color_percent, fall_percent)
 
 # Put in long form, with each phenophase observation in a separate row
 leaves <- dat %>%
   mutate(pheno_class_id = 3,
          intensity_name = "Canopy fullness",
-         comment = paste0("Percent fallen leaves: ", fall_percent)) %>%
+         comment = paste0("Percent fallen leaves: ", fall_percent, 
+                          "; Estimated canopy fullness: ", canopy * 100)) %>%
   rename(phenophase_status = status_leaves,
-         intensity_number = intensity_canopy,
-         raw_abundance_value = canopy) %>%
+         intensity_number = intensity_canopy) %>%
   select(-c(status_coloredleaves, status_fallingleaves, 
             intensity_coloredcanopy, color_canopy, fall_percent, color_percent))
 coloredleaves <- dat %>%
@@ -304,17 +314,16 @@ coloredleaves <- dat %>%
          intensity_name = "Canopy color",
          comment = paste0("Percent fallen leaves: ", fall_percent, 
                           "; Percent of existing leaves that are colored: ",
-                          color_percent)) %>%
+                          color_percent, "; Estimated canopy color: ",
+                          color_canopy * 100)) %>%
   rename(phenophase_status = status_coloredleaves,
-         intensity_number = intensity_coloredcanopy,
-         raw_abundance_value = color_canopy) %>%
+         intensity_number = intensity_coloredcanopy) %>%
   select(-c(status_leaves, status_fallingleaves, 
             intensity_canopy, canopy, fall_percent, color_percent))
 fallingleaves <- dat %>%
   mutate(pheno_class_id = 5,
          intensity_name = NA,
          intensity_number = NA,
-         raw_abundance_value = NA,
          comment = paste0("Percent fallen leaves: ", fall_percent)) %>%
   rename(phenophase_status = status_fallingleaves) %>%
   select(-c(status_leaves, status_coloredleaves, 
@@ -337,26 +346,21 @@ datl <- datl %>%
 # check:
 # count(datl, intensity_number, abundance_value)
 
-# Attach phenophase_id abundance_category_id, abundance_value_id
+# Attach phenophase_id & name as well as abundance_name (intensity name). Will
+# NOT append abundance category or value IDs -- these will get added during 
+# import.
 phpint_subs <- phpint %>%
-  distinct(species_id, pheno_class_id, phenophase_id, phenophase_description,
-           abundance_category_id, abundance_name)
+  distinct(species_id, common_name, pheno_class_id, phenophase_id, 
+           phenophase_description, abundance_name)
 
 datl <- datl %>%
-  left_join(phpint_subs, by = c("species_id", "pheno_class_id"))
-
-# check:
-# count(datl, species_id, phenophase_id, phenophase_description)
-
-# Attach abundance_value_ids (when there is an abundance value)
-datl <- datl %>%
-  left_join(distinct(phpint, abundance_value, abundance_value_id),
-            by = "abundance_value")
+  left_join(phpint_subs, by = c("species_id", "common_name", "pheno_class_id"))
 
 # Checks:
-count(datl, pheno_class_id, phenophase_description, phenophase_status,
-      abundance_value_id, abundance_value)
-count(datl, phenophase_description, phenophase_status)
+# count(datl, species_id, phenophase_id, phenophase_description)
+# count(datl, pheno_class_id, phenophase_description, phenophase_status,
+#       intensity_number, abundance_value)
+# count(datl, phenophase_description, phenophase_status)
 
 # Remove rows for colored/falling leaves whern status = NA because there are
 # no leaves left
@@ -365,14 +369,10 @@ datl <- datl %>%
 
 # Clean up
 observations <- datl %>%
-  rename(observation_date = date,
-         abundance_category = abundance_category_id,
-         abundance_category_value = abundance_value_id) %>%
-  mutate(raw_abundance_value = raw_abundance_value * 100) %>%
-  select(last_name, observation_date, phenophase_id, 
-         phenophase_description, phenophase_status, individual_userstr, 
-         observation_group_name, protocol_id, abundance_category, 
-         abundance_category_value, raw_abundance_value, comment) %>%
+  rename(observation_date = date) %>%
+  select(username, observation_date, phenophase_id, phenophase_description,
+         phenophase_status, individual_userstr, observation_group_name, 
+         abundance_name, abundance_value, comment) %>%
   arrange(observation_group_name, phenophase_id)
 
 # Write to file (commented out for now to avoid overwriting accidentally)
