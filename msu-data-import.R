@@ -1,5 +1,5 @@
 # Creating files for importing MSU data to NPN database
-# 16 July 2026
+# 20 October 2026
 
 library(dplyr)
 library(stringr)
@@ -222,6 +222,9 @@ dat <- dat %>%
 # Check that each observation has a site name
 # count(dat, station_name)
 
+# Check that every username is in person table
+# dat$username[!dat$username %in% persons$username]
+
 # Create observation-group table
 og <- dat %>%
   select(observation_group_name, date, username, station_name)
@@ -246,7 +249,7 @@ dat <- dat %>%
 # Percent of canopy with leaves (leaves phenophase)
 # Percent of canopy with colored leaves (colored leaves phenophase)
 
-# Convert percents to proportions and calculate proportion of cannopy with
+# Convert percents to proportions and calculate proportion of canopy with
 # leaves (canopy) and proportion of potential canopy that has colored leaves
 # (color_canopy)
 dat <- dat %>%
@@ -258,16 +261,30 @@ dat <- dat %>%
          color_canopy = color * canopy) %>%
   data.frame()
 
-# Convert color columns to NA when canopy = 0
-dat <- dat %>%
-  mutate(color_percent = ifelse(canopy == 0, NA, color_percent),
-         color = ifelse(canopy == 0, NA, color),
-         color_canopy = ifelse(canopy == 0, NA, color_canopy))
+# Look at how students reported color when they reported no leaves 
+# (fall_percent = 100)
+filter(dat, fall_percent == 100) %>%
+  group_by(year(date)) %>%
+  summarize(color0 = sum(color_percent == 0),
+            color100 = sum(color_percent == 100),
+            colorOther = sum(color_percent > 0 & color_percent < 100))
+# 2017-2024: students reported color = 100 more often than color = 0
+# 2025: students reported color = 100 LESS often than color = 0.
+# I think there were changes in the instructions given to the students between
+# 2024 and 2025.
 
-# Add in NPN status columns
+# Note that color_canopy values are always 0 when canopy = 0 (fall_percent == 
+# 100) given how it's calculated. Won't make any changes to color_percent and 
+# color, since this is what the student actually reported.
+filter(dat, canopy == 0) %>% count(color_canopy)
+
+# Add in NPN status columns 
+  # Note that we want to have a colored leaves entry with status 0 even when
+  # there aren't leaves (canopy = 0). But we don't have a falling leaves entry
+  # when there aren't leaves
 dat <- dat %>%
   mutate(status_leaves = ifelse(canopy > 0, 1, 0),
-         status_coloredleaves = ifelse(color > 0, 1, 0)) %>%
+         status_coloredleaves = ifelse(color_canopy > 0, 1, 0)) %>%
   mutate(status_fallingleaves = case_when(
     canopy == 0 ~ NA,
     canopy < 1 ~ 1,
@@ -314,7 +331,7 @@ coloredleaves <- dat %>%
          intensity_name = "Canopy color",
          comment = paste0("Percent fallen leaves: ", fall_percent, 
                           "; Percent of existing leaves that are colored: ",
-                          color_percent, "; Estimated canopy color: ",
+                          color_percent, "; Estimated potential canopy with color: ",
                           color_canopy * 100)) %>%
   rename(phenophase_status = status_coloredleaves,
          intensity_number = intensity_coloredcanopy) %>%
@@ -362,8 +379,8 @@ datl <- datl %>%
 #       intensity_number, abundance_value)
 # count(datl, phenophase_description, phenophase_status)
 
-# Remove rows for colored/falling leaves whern status = NA because there are
-# no leaves left
+# Remove rows for falling leaves when status = NA because there are no leaves
+# left
 datl <- datl %>%
   filter(!is.na(phenophase_status))
 
