@@ -1,5 +1,5 @@
 # Merging MSU Campus Trees data, 2017-2025
-# 16 Apr 2026
+# 20 October 2026
 # E Zylstra
 
 library(dplyr)
@@ -165,14 +165,15 @@ dat <- bind_rows(df1719, df2123, df2425)
 
 # Look for any problematic years/dates
 filter(dat, !year %in% 2017:2025) 
-# Three dates are incorrect (in 2004 or 2005). Will delete these observations
+# Five dates are incorrect (in 2004, 2005, or 2026). Will just delete these 
+# observations
 dat <- dat %>%
   filter(year %in% 2017:2025)
 
 # Check that all section numbers match up with year
 dat %>%
   filter(year != str_sub(SectionID, 1, 4))
-# Couple instances where there's a mismatch between Section year, photo date, 
+# Few instances where there's a mismatch between Section year, photo date, 
 # and/or submission year. Will delete
 dat <- dat %>%
   filter(year == str_sub(SectionID, 1, 4))
